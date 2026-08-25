@@ -526,3 +526,12 @@ setInterval(() => {
     console.error('Ping 에러:', err.message);
   });
 }, 14 * 60 * 1000); // 14분마다 실행
+
+// 예상치 못한 에러 발생 시 봇이 꺼지지 않도록 예외 처리
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled promise rejection:', error);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+});
