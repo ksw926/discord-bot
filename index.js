@@ -4,8 +4,8 @@ app.get('/', (req, res) => res.send('거점봇 작동 중!'));
 app.listen(process.env.PORT || 3000);
 
 require('dotenv').config();
-const fs = require('fs'); // 📁 텍스트 파일 저장을 위한 모듈
-const cron = require('node-cron'); // ⏰ 매주 자동 리셋을 위한 모듈
+const fs = require('fs');
+const cron = require('node-cron');
 
 const { 
   Client, 
@@ -31,24 +31,27 @@ const MAX_PARTICIPANTS = 25;
 // 🔒 관리자가 아니더라도 명령어를 사용할 수 있는 특정 유저 ID 목록
 const ALLOWED_USER_IDS = ['313250401883258882']; 
 
+// 📌 디스코드에 출력된 현황판 메시지를 기억할 변수
+let statusMessage = null;
+
 // -------------------------------------------------------------
-// 📁 1. 텍스트 파일 자동 저장 함수 (기록 보존)
+// 📁 텍스트 파일 저장 함수 (리셋 전/후 기록 보존)
 // -------------------------------------------------------------
 function saveLogToFile(logMessage) {
   const time = getTimeString();
-  const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const date = new Date().toISOString().slice(0, 10);
   const formattedLog = `[${date} ${time}] ${logMessage}\n`;
 
-  // node_war_logs.txt 파일에 실시간으로 기록을 이어서 저장합니다.
   fs.appendFile('node_war_logs.txt', formattedLog, (err) => {
     if (err) console.error('텍스트 파일 저장 중 오류 발생:', err);
   });
 }
 
 // -------------------------------------------------------------
-// 🔄 2. 거점전 데이터 초기화/삭제 함수
+// 🔄 데이터 및 디스코드 메시지 전체 자동 리셋 함수
 // -------------------------------------------------------------
-function resetData() {
+async function executeAutoReset() {
+  // 1. 메모리 데이터 초기화
   participantData.classes = {
     '전승 워리어': [], '전승 소서러': [], '전승 자이언트': [], '전승 레인저': [], '전승 금수랑': [],
     '전승 무사': [], '전승 발키리': [], '전승 매화': [], '전승 쿠노이치': [], '전승 닌자': [],
@@ -72,9 +75,22 @@ function resetData() {
   participantData.waitingList = [];
   participantData.applyHistory = [];
   participantData.cancelHistory = [];
-  // userFavorites(개인 즐겨찾기)는 유지됩니다.
 
-  const resetMessage = '🚨 [자동 삭제/리셋] 매주 지정된 시간에 맞춰 거점전 신청 데이터가 전체 삭제되었습니다.';
+  // 2. 기존 디스코드 현황판 메시지가 있다면 자동 수정(0명으로 초기화) 또는 삭제
+  if (statusMessage) {
+    try {
+      // 0명으로 깔끔하게 초기화된 메시지로 자동 업데이트
+      await statusMessage.edit({
+        embeds: [generateStatusEmbed(), generateHistoryEmbed()],
+        components: generateMainButtons(),
+      });
+    } catch (err) {
+      console.error('디스코드 메시지 자동 리셋 업데이트 실패:', err);
+      statusMessage = null;
+    }
+  }
+
+  const resetMessage = '🚨 [자동 리셋] 지정된 시간이 되어 거점전 신청 데이터 및 현황판이 전체 초기화되었습니다.';
   console.log(resetMessage);
   saveLogToFile(resetMessage);
 }
@@ -88,8 +104,8 @@ const participantData = {
   userFavorites: {}
 };
 
-// 초기화 실행
-resetData();
+// 최초 실행 시 기본 틀 생성
+executeAutoReset();
 
 const SINGLE_SLOT_SUBS = ['화염탑 1', '화염탑 2', '대포 1', '대포 2'];
 
@@ -177,7 +193,7 @@ function generateHistoryEmbed() {
   return embed;
 }
 
-// 메인 버튼 생성
+// 메인 버튼
 function generateMainButtons() {
   return [
     new ActionRowBuilder().addComponents(
@@ -322,7 +338,7 @@ function generateDetailSelect(category, isFavoriteMode = false) {
   ];
 }
 
-// 신청 로직 공통 처리
+// 신청 로직
 function registerUserApplication(userId, username, selectedValue, time) {
   let logMsg = '';
   if (participantData.sub.hasOwnProperty(selectedValue)) {
@@ -345,26 +361,26 @@ function registerUserApplication(userId, username, selectedValue, time) {
     }
   }
 
-  // 📝 node_war_logs.txt 텍스트 파일에 즉시 저장은
   saveLogToFile(logMsg);
 }
 
 client.on('ready', () => {
   console.log(`✅ ${client.user.tag} 봇이 성공적으로 실행되었습니다!`);
 
-  // -------------------------------------------------------------
-  // ⏰ 3. 매주 지정된 요일 오후 11시(23:00) 자동 삭제/초기화
-  // -------------------------------------------------------------
-  // '0 23 * * 0' -> 매주 일요일 오후 11시 00분
-  // (요일 번호: 0=일요일, 1=월요일, 2=화요일, 3=수요일, 4=목요일, 5=금요일, 6=토요일)
-  cron.schedule('0 23 * * 0', () => {
-    resetData();
+  // =============================================================
+  // ⏰ [가장 중요한 부분] 매주 원하시는 요일 오후 11시(23:00) 자동 리셋
+  // =============================================================
+  // 맨 뒤의 숫자(0~6)를 원하시는 요일로 맞추시면 됩니다:
+  // 0 = 일요일, 1 = 월요일, 2 = 화요일, 3 = 수요일, 4 = 목요일, 5 = 금요일, 6 = 토요일
+  // 예: '0 23 * * 0' -> 매주 일요일 오후 11시 정각에 자동 데이터+메시지 초기화
+  cron.schedule('0 23 * * 0', async () => {
+    await executeAutoReset();
   }, {
-    timezone: "Asia/Seoul" // 한국 시간 기준
+    timezone: "Asia/Seoul"
   });
 });
 
-// 메시지 수신 및 명령어 권한 검사
+// 명령어 처리
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
@@ -373,7 +389,7 @@ client.on('messageCreate', async (message) => {
     const isAllowedUser = ALLOWED_USER_IDS.includes(message.author.id);
 
     if (!isAdmin && !isAllowedUser) {
-      const replyMsg = await message.reply('⚠️ `!거점와써` 명령어는 서버 관리자 또는 지정된 사용자만 이용할 수 있습니다.');
+      const replyMsg = await message.reply('⚠️ `!거점와써` 명령어는 지정된 권한자만 이용 가능합니다.');
       setTimeout(() => {
         message.delete().catch(() => {});
         replyMsg.delete().catch(() => {});
@@ -383,13 +399,19 @@ client.on('messageCreate', async (message) => {
 
     message.delete().catch(() => {});
 
-    await message.channel.send({
+    // 기존 메시지가 남아있다면 삭제 후 새로 전송
+    if (statusMessage) {
+      statusMessage.delete().catch(() => {});
+    }
+
+    statusMessage = await message.channel.send({
       embeds: [generateStatusEmbed(), generateHistoryEmbed()],
       components: generateMainButtons(),
     });
   }
 });
 
+// 버튼 및 메뉴 클릭 상호작용
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isStringSelectMenu() && !interaction.isButton()) return;
 
@@ -561,4 +583,5 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN)
+
