@@ -31,7 +31,7 @@ const client = new Client({
 const MAX_PARTICIPANTS = 25;
 
 // 🔒 관리자가 아니더라도 명령어를 사용할 수 있는 특정 유저 ID 목록 (본인 디스코드 ID 입력)
-const ALLOWED_USER_IDS = ['여기에_본인_디스코드_유저_ID_입력']; 
+const ALLOWED_USER_IDS = ['313250401883258882']; 
 
 const participantData = {
   classes: {
