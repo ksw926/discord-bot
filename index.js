@@ -515,3 +515,11 @@ process.on('uncaughtException', (err) => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
+// Render 24시간 수면 방지 (Self-Ping)
+const axios = require('axios'); // 또는 node-fetch
+setInterval(() => {
+  axios.get('https://wasseo-bot.onrender.com')
+    .then(() => console.log('⏰ 수면 방지 Ping 전송 성공'))
+    .catch((err) => console.error('Ping 에러:', err.message));
+}, 14 * 60 * 1000); // 14분마다 실행
