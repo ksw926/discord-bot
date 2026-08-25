@@ -5,7 +5,6 @@ app.listen(process.env.PORT || 3000);
 
 require('dotenv').config();
 const fs = require('fs');
-const cron = require('node-cron');
 
 const { 
   Client, 
@@ -34,8 +33,48 @@ const ALLOWED_USER_IDS = ['313250401883258882'];
 // 📌 디스코드에 출력된 현황판 메시지를 기억할 변수
 let statusMessage = null;
 
+// 초기 클래스 데이터 생성을 위한 함수
+function createInitialClasses() {
+  return {
+    '전승 워리어': [], '전승 소서러': [], '전승 자이언트': [], '전승 레인저': [], '전승 금수랑': [],
+    '전승 무사': [], '전승 발키리': [], '전승 매화': [], '전승 쿠노이치': [], '전승 닌자': [],
+    '전승 위자드': [], '전승 위치': [], '전승 다크나이트': [], '전승 격투가': [], '전승 미스틱': [],
+    '전승 란': [], '전승 가디언': [], '전승 하사신': [], '전승 노바': [], '전승 세이지': [],
+    '전승 커세어': [], '전승 드라카니아': [], '전승 우사': [], '전승 매구': [], '전승 도사': [],
+
+    '각성 워리어': [], '각성 소서러': [], '각성 자이언트': [], '각성 레인저': [], '각성 금수랑': [],
+    '각성 무사': [], '각성 발키리': [], '각성 매화': [], '각성 쿠노이치': [], '각성 닌자': [],
+    '각성 위자드': [], '각성 위치': [], '각성 다크나이트': [], '각성 격투가': [], '각성 미스틱': [],
+    '각성 란': [], '각성 가디언': [], '각성 하사신': [], '각성 노바': [], '각성 세이지': [],
+    '각성 커세어': [], '각성 드라카니아': [], '각성 우사': [], '각성 매구': [], '각성 도사': [],
+
+    '아처': [], '샤이': [], '스칼라': [], '데드아이': [], '오공': [], '세라핌': []
+  };
+}
+
+// 초기 특수조 데이터 생성을 위한 함수
+function createInitialSub() {
+  return {
+    '빌더': [], '불퇴': [], '신기전': [], 
+    '화염탑 1': [], '화염탑 2': [], 
+    '코끼리': [], '대포 1': [], '대포 2': []
+  };
+}
+
+// 거점 신청 데이터 저장소
+const participantData = {
+  classes: createInitialClasses(),
+  sub: createInitialSub(),
+  waitingList: [],
+  applyHistory: [],
+  cancelHistory: [],
+  userFavorites: {}
+};
+
+const SINGLE_SLOT_SUBS = ['화염탑 1', '화염탑 2', '대포 1', '대포 2'];
+
 // -------------------------------------------------------------
-// 📁 텍스트 파일 저장 함수 (리셋 전/후 기록 보존)
+// 📁 텍스트 파일 저장 함수
 // -------------------------------------------------------------
 function saveLogToFile(logMessage) {
   const time = getTimeString();
@@ -46,68 +85,6 @@ function saveLogToFile(logMessage) {
     if (err) console.error('텍스트 파일 저장 중 오류 발생:', err);
   });
 }
-
-// -------------------------------------------------------------
-// 🔄 데이터 및 디스코드 메시지 전체 자동 리셋 함수
-// -------------------------------------------------------------
-async function executeAutoReset() {
-  // 1. 메모리 데이터 초기화
-  participantData.classes = {
-    '전승 워리어': [], '전승 소서러': [], '전승 자이언트': [], '전승 레인저': [], '전승 금수랑': [],
-    '전승 무사': [], '전승 발키리': [], '전승 매화': [], '전승 쿠노이치': [], '전승 닌자': [],
-    '전승 위자드': [], '전승 위치': [], '전승 다크나이트': [], '전승 격투가': [], '전승 미스틱': [],
-    '전승 란': [], '전승 가디언': [], '전승 하사신': [], '전승 노바': [], '전승 세이지': [],
-    '전승 커세어': [], '전승 드라카니아': [], '전승 우사': [], '전승 매구': [], '전승 도사': [],
-    
-    '각성 워리어': [], '각성 소서러': [], '각성 자이언트': [], '각성 레인저': [], '각성 금수랑': [],
-    '각성 무사': [], '각성 발키리': [], '각성 매화': [], '각성 쿠노이치': [], '각성 닌자': [],
-    '각성 위자드': [], '각성 위치': [], '각성 다크나이트': [], '각성 격투가': [], '각성 미스틱': [],
-    '각성 란': [], '각성 가디언': [], '각성 하사신': [], '각성 노바': [], '각성 세이지': [],
-    '각성 커세어': [], '각성 드라카니아': [], '각성 우사': [], '각성 매구': [], '각성 도사': [],
-    
-    '아처': [], '샤이': [], '스칼라': [], '데드아이': [], '오공': [], '세라핌': []
-  };
-  participantData.sub = {
-    '빌더': [], '불퇴': [], '신기전': [], 
-    '화염탑 1': [], '화염탑 2': [], 
-    '코끼리': [], '대포 1': [], '대포 2': []
-  };
-  participantData.waitingList = [];
-  participantData.applyHistory = [];
-  participantData.cancelHistory = [];
-
-  // 2. 기존 디스코드 현황판 메시지가 있다면 자동 수정(0명으로 초기화) 또는 삭제
-  if (statusMessage) {
-    try {
-      // 0명으로 깔끔하게 초기화된 메시지로 자동 업데이트
-      await statusMessage.edit({
-        embeds: [generateStatusEmbed(), generateHistoryEmbed()],
-        components: generateMainButtons(),
-      });
-    } catch (err) {
-      console.error('디스코드 메시지 자동 리셋 업데이트 실패:', err);
-      statusMessage = null;
-    }
-  }
-
-  const resetMessage = '🚨 [자동 리셋] 지정된 시간이 되어 거점전 신청 데이터 및 현황판이 전체 초기화되었습니다.';
-  console.log(resetMessage);
-  saveLogToFile(resetMessage);
-}
-
-const participantData = {
-  classes: {},
-  sub: {},
-  waitingList: [],
-  applyHistory: [],
-  cancelHistory: [],
-  userFavorites: {}
-};
-
-// 최초 실행 시 기본 틀 생성
-executeAutoReset();
-
-const SINGLE_SLOT_SUBS = ['화염탑 1', '화염탑 2', '대포 1', '대포 2'];
 
 function getTotalClassCount() {
   let count = 0;
@@ -132,6 +109,13 @@ function getUserAppliedStatus(userId) {
 function getTimeString() {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+}
+
+// 권한 확인 함수 (관리자 권한 OR 지정된 ID)
+function isUserAdmin(member, userId) {
+  const isAdmin = member?.permissions?.has(PermissionFlagsBits.Administrator);
+  const isAllowed = ALLOWED_USER_IDS.includes(userId);
+  return isAdmin || isAllowed;
 }
 
 // 1. 메인 참여 현황판 임베드
@@ -205,7 +189,7 @@ function generateMainButtons() {
   ];
 }
 
-// 카테고리 메뉴
+// 카테고리 메뉴 (초기화 옵션 추가)
 function generateCategorySelect() {
   return [
     new ActionRowBuilder().addComponents(
@@ -216,7 +200,8 @@ function generateCategorySelect() {
           { label: '🗡️ 전승 클래스 선택', value: 'category_succ', description: '전승 클래스 목록을 열어 선택합니다.' },
           { label: '⚔️ 각성 클래스 선택', value: 'category_awak', description: '각성 클래스 목록을 열어 선택합니다.' },
           { label: '🏹 개방 클래스 선택', value: 'category_open', description: '개방 클래스 목록을 열어 선택합니다.' },
-          { label: '🛠️ 특수조 담당 선택', value: 'category_sub', description: '특수조 담당 목록을 열어 선택합니다.' }
+          { label: '🛠️ 특수조 담당 선택', value: 'category_sub', description: '특수조 담당 목록을 열어 선택합니다.' },
+          { label: '🧹 거점 데이터 초기화', value: 'category_reset', description: '⚠️ [관리자전용] 현황판 및 신청 기록을 전면 초기화합니다.' }
         ])
     )
   ];
@@ -343,6 +328,9 @@ function registerUserApplication(userId, username, selectedValue, time) {
   let logMsg = '';
   if (participantData.sub.hasOwnProperty(selectedValue)) {
     if (SINGLE_SLOT_SUBS.includes(selectedValue)) {
+      if (participantData.sub[selectedValue].length > 0) {
+        return { success: false, message: `❌ [${selectedValue}] 항목은 이미 신청한 유저가 있습니다.` };
+      }
       participantData.sub[selectedValue] = [userId];
     } else {
       participantData.sub[selectedValue].push(userId);
@@ -362,22 +350,11 @@ function registerUserApplication(userId, username, selectedValue, time) {
   }
 
   saveLogToFile(logMsg);
+  return { success: true };
 }
 
 client.on('ready', () => {
   console.log(`✅ ${client.user.tag} 봇이 성공적으로 실행되었습니다!`);
-
-  // =============================================================
-  // ⏰ [가장 중요한 부분] 매주 원하시는 요일 오후 11시(23:00) 자동 리셋
-  // =============================================================
-  // 맨 뒤의 숫자(0~6)를 원하시는 요일로 맞추시면 됩니다:
-  // 0 = 일요일, 1 = 월요일, 2 = 화요일, 3 = 수요일, 4 = 목요일, 5 = 금요일, 6 = 토요일
-  // 예: '0 23 * * 0' -> 매주 일요일 오후 11시 정각에 자동 데이터+메시지 초기화
-  cron.schedule('0 23 * * 0', async () => {
-    await executeAutoReset();
-  }, {
-    timezone: "Asia/Seoul"
-  });
 });
 
 // 명령어 처리
@@ -385,10 +362,7 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   if (message.content === '!거점와써') {
-    const isAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator);
-    const isAllowedUser = ALLOWED_USER_IDS.includes(message.author.id);
-
-    if (!isAdmin && !isAllowedUser) {
+    if (!isUserAdmin(message.member, message.author.id)) {
       const replyMsg = await message.reply('⚠️ `!거점와써` 명령어는 지정된 권한자만 이용 가능합니다.');
       setTimeout(() => {
         message.delete().catch(() => {});
@@ -491,6 +465,33 @@ client.on('interactionCreate', async (interaction) => {
     else if (interaction.isStringSelectMenu()) {
       if (interaction.customId === 'select_category') {
         const selectedValue = interaction.values[0];
+
+        // 🧹 초기화 처리 (관리자 권한 체크)
+        if (selectedValue === 'category_reset') {
+          if (!isUserAdmin(interaction.member, userId)) {
+            return await interaction.reply({ 
+              content: '⚠️ 거점 데이터 초기화는 관리자 권한을 가진 사용자만 가능합니다.', 
+              ephemeral: true 
+            });
+          }
+
+          // 데이터 초기화 수행
+          participantData.classes = createInitialClasses();
+          participantData.sub = createInitialSub();
+          participantData.waitingList = [];
+          participantData.applyHistory = [];
+          participantData.cancelHistory = [];
+
+          saveLogToFile(`[초기화] ${username} 님이 거점 현황 데이터를 초기화했습니다.`);
+
+          await interaction.update({
+            embeds: [generateStatusEmbed(), generateHistoryEmbed()],
+            components: generateMainButtons(),
+          });
+
+          return await interaction.followUp({ content: '🧹 거점전 신청 데이터 및 로그가 성공적으로 초기화되었습니다.', ephemeral: true });
+        }
+
         await interaction.update({
           embeds: [generateStatusEmbed(), generateHistoryEmbed()],
           components: generateDetailSelect(selectedValue, false),
@@ -498,7 +499,11 @@ client.on('interactionCreate', async (interaction) => {
       } 
       else if (interaction.customId === 'select_detail_class') {
         const selectedValue = interaction.values[0];
-        registerUserApplication(userId, username, selectedValue, time);
+        const result = registerUserApplication(userId, username, selectedValue, time);
+
+        if (!result.success) {
+          return await interaction.reply({ content: result.message, ephemeral: true });
+        }
 
         await interaction.update({
           embeds: [generateStatusEmbed(), generateHistoryEmbed()],
@@ -518,7 +523,11 @@ client.on('interactionCreate', async (interaction) => {
           }
 
           const favClass = participantData.userFavorites[userId];
-          registerUserApplication(userId, username, favClass, time);
+          const result = registerUserApplication(userId, username, favClass, time);
+
+          if (!result.success) {
+            return await interaction.reply({ content: result.message, ephemeral: true });
+          }
 
           await interaction.update({
             embeds: [generateStatusEmbed(), generateHistoryEmbed()],
@@ -536,12 +545,12 @@ client.on('interactionCreate', async (interaction) => {
             return await interaction.reply({ content: '❌ 삭제할 즐겨찾기 내역이 없습니다.', ephemeral: true });
           }
           delete participantData.userFavorites[userId];
-          await interaction.reply({ content: '🗑️ 즐겨찾기 내역이 삭제되었습니다.', ephemeral: true });
-
-          await interaction.message.edit({
+          
+          await interaction.update({
             embeds: [generateStatusEmbed(), generateHistoryEmbed()],
             components: generateMainButtons(),
           });
+          await interaction.followUp({ content: '🗑️ 즐겨찾기 내역이 삭제되었습니다.', ephemeral: true });
         }
       }
       else if (interaction.customId === 'select_fav_category') {
@@ -552,12 +561,12 @@ client.on('interactionCreate', async (interaction) => {
             return await interaction.reply({ content: '❌ 삭제할 즐겨찾기 내역이 없습니다.', ephemeral: true });
           }
           delete participantData.userFavorites[userId];
-          await interaction.reply({ content: '🗑️ 즐겨찾기 내역이 삭제되었습니다.', ephemeral: true });
-
-          await interaction.message.edit({
+          
+          await interaction.update({
             embeds: [generateStatusEmbed(), generateHistoryEmbed()],
             components: generateMainButtons(),
           });
+          await interaction.followUp({ content: '🗑️ 즐겨찾기 내역이 삭제되었습니다.', ephemeral: true });
         } else {
           await interaction.update({
             embeds: [generateStatusEmbed(), generateHistoryEmbed()],
@@ -569,12 +578,11 @@ client.on('interactionCreate', async (interaction) => {
         const selectedValue = interaction.values[0];
         participantData.userFavorites[userId] = selectedValue;
 
-        await interaction.reply({ content: `⭐ **[${selectedValue}]**(이)가 즐겨찾기로 등록되었습니다!`, ephemeral: true });
-
-        await interaction.message.edit({
+        await interaction.update({
           embeds: [generateStatusEmbed(), generateHistoryEmbed()],
           components: generateMainButtons(),
         });
+        await interaction.followUp({ content: `⭐ **[${selectedValue}]**(이)가 즐겨찾기로 등록되었습니다!`, ephemeral: true });
       }
     }
 
@@ -583,5 +591,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN)
-
+client.login(process.env.DISCORD_TOKEN);
