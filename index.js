@@ -516,10 +516,13 @@ process.on('uncaughtException', (err) => {
 
 client.login(process.env.DISCORD_TOKEN);
 
-// Render 24시간 수면 방지 (Self-Ping)
-const axios = require('axios'); // 또는 node-fetch
+// Render 24시간 수면 방지 (별도 패키지 설치 필요 없음)
+const https = require('https');
+
 setInterval(() => {
-  axios.get('https://wasseo-bot.onrender.com')
-    .then(() => console.log('⏰ 수면 방지 Ping 전송 성공'))
-    .catch((err) => console.error('Ping 에러:', err.message));
+  https.get('https://wasseo-bot.onrender.com', (res) => {
+    console.log(`⏰ 수면 방지 Ping 전송 성공 (상태 코드: ${res.statusCode})`);
+  }).on('error', (err) => {
+    console.error('Ping 에러:', err.message);
+  });
 }, 14 * 60 * 1000); // 14분마다 실행
