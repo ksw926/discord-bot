@@ -1,14 +1,12 @@
 const express = require('express');
 const app = express();
-app.get('/', (req, res) => res.send('Bot is running!'));
-app.listen(3000);
-
-const express = require('express');
-const app = express();
 app.get('/', (req, res) => res.send('거점봇 작동 중!'));
 app.listen(process.env.PORT || 3000);
 
 require('dotenv').config();
+const fs = require('fs'); // 📁 텍스트 파일 저장을 위한 모듈
+const cron = require('node-cron'); // ⏰ 매주 자동 리셋을 위한 모듈
+
 const { 
   Client, 
   GatewayIntentBits, 
@@ -30,11 +28,28 @@ const client = new Client({
 
 const MAX_PARTICIPANTS = 25;
 
-// 🔒 관리자가 아니더라도 명령어를 사용할 수 있는 특정 유저 ID 목록 (본인 디스코드 ID 입력)
+// 🔒 관리자가 아니더라도 명령어를 사용할 수 있는 특정 유저 ID 목록
 const ALLOWED_USER_IDS = ['313250401883258882']; 
 
-const participantData = {
-  classes: {
+// -------------------------------------------------------------
+// 📁 1. 텍스트 파일 자동 저장 함수 (기록 보존)
+// -------------------------------------------------------------
+function saveLogToFile(logMessage) {
+  const time = getTimeString();
+  const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const formattedLog = `[${date} ${time}] ${logMessage}\n`;
+
+  // node_war_logs.txt 파일에 실시간으로 기록을 이어서 저장합니다.
+  fs.appendFile('node_war_logs.txt', formattedLog, (err) => {
+    if (err) console.error('텍스트 파일 저장 중 오류 발생:', err);
+  });
+}
+
+// -------------------------------------------------------------
+// 🔄 2. 거점전 데이터 초기화/삭제 함수
+// -------------------------------------------------------------
+function resetData() {
+  participantData.classes = {
     '전승 워리어': [], '전승 소서러': [], '전승 자이언트': [], '전승 레인저': [], '전승 금수랑': [],
     '전승 무사': [], '전승 발키리': [], '전승 매화': [], '전승 쿠노이치': [], '전승 닌자': [],
     '전승 위자드': [], '전승 위치': [], '전승 다크나이트': [], '전승 격투가': [], '전승 미스틱': [],
@@ -48,17 +63,33 @@ const participantData = {
     '각성 커세어': [], '각성 드라카니아': [], '각성 우사': [], '각성 매구': [], '각성 도사': [],
     
     '아처': [], '샤이': [], '스칼라': [], '데드아이': [], '오공': [], '세라핌': []
-  },
-  sub: {
+  };
+  participantData.sub = {
     '빌더': [], '불퇴': [], '신기전': [], 
     '화염탑 1': [], '화염탑 2': [], 
     '코끼리': [], '대포 1': [], '대포 2': []
-  },
+  };
+  participantData.waitingList = [];
+  participantData.applyHistory = [];
+  participantData.cancelHistory = [];
+  // userFavorites(개인 즐겨찾기)는 유지됩니다.
+
+  const resetMessage = '🚨 [자동 삭제/리셋] 매주 지정된 시간에 맞춰 거점전 신청 데이터가 전체 삭제되었습니다.';
+  console.log(resetMessage);
+  saveLogToFile(resetMessage);
+}
+
+const participantData = {
+  classes: {},
+  sub: {},
   waitingList: [],
-  applyHistory: [],  // 모든 신청 기록 누적
-  cancelHistory: [], // 모든 취소 기록 누적
-  userFavorites: {}   // 유저별 즐겨찾기 저장 (userId: '클래스명 또는 특수조명')
+  applyHistory: [],
+  cancelHistory: [],
+  userFavorites: {}
 };
+
+// 초기화 실행
+resetData();
 
 const SINGLE_SLOT_SUBS = ['화염탑 1', '화염탑 2', '대포 1', '대포 2'];
 
@@ -87,7 +118,7 @@ function getTimeString() {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 }
 
-// 1. 메인 참여 현황판 임베드 (본대 / 특수조 / 대기자)
+// 1. 메인 참여 현황판 임베드
 function generateStatusEmbed() {
   const classCount = getTotalClassCount();
   const subCount = getTotalSubCount();
@@ -118,7 +149,7 @@ function generateStatusEmbed() {
   return embed;
 }
 
-// 2. 실시간 기록 전용 임베드 (신청/취소 기록)
+// 2. 실시간 기록 전용 임베드
 function generateHistoryEmbed() {
   const embed = new EmbedBuilder()
     .setTitle(`📜 거점전 실시간 기록 로그`)
@@ -158,7 +189,7 @@ function generateMainButtons() {
   ];
 }
 
-// 일반 거점 신청 카테고리 메뉴
+// 카테고리 메뉴
 function generateCategorySelect() {
   return [
     new ActionRowBuilder().addComponents(
@@ -175,7 +206,7 @@ function generateCategorySelect() {
   ];
 }
 
-// ⭐ 즐겨찾기 버튼 클릭 시 보여주는 최상위 루트 메뉴
+// 즐겨찾기 루트 메뉴
 function generateFavoriteRootMenu(userId) {
   const currentFav = participantData.userFavorites[userId];
   const options = [];
@@ -203,7 +234,7 @@ function generateFavoriteRootMenu(userId) {
   ];
 }
 
-// 즐겨찾기 추가/변경 선택 시 나오는 카테고리 메뉴
+// 즐겨찾기 카테고리 메뉴
 function generateFavoriteCategorySelect() {
   return [
     new ActionRowBuilder().addComponents(
@@ -221,7 +252,7 @@ function generateFavoriteCategorySelect() {
   ];
 }
 
-// 상세 클래스/담당 선택 드롭다운 생성
+// 상세 선택 드롭다운
 function generateDetailSelect(category, isFavoriteMode = false) {
   let placeholder = '';
   let options = [];
@@ -293,26 +324,44 @@ function generateDetailSelect(category, isFavoriteMode = false) {
 
 // 신청 로직 공통 처리
 function registerUserApplication(userId, username, selectedValue, time) {
+  let logMsg = '';
   if (participantData.sub.hasOwnProperty(selectedValue)) {
     if (SINGLE_SLOT_SUBS.includes(selectedValue)) {
       participantData.sub[selectedValue] = [userId];
     } else {
       participantData.sub[selectedValue].push(userId);
     }
+    logMsg = `[신청] ${username} -> [${selectedValue}] 특수조`;
     participantData.applyHistory.push(`\`[${time}]\` **${username}** ➡️ **[${selectedValue}]** 특수조 담당`);
   } else if (participantData.classes.hasOwnProperty(selectedValue)) {
     if (getTotalClassCount() < MAX_PARTICIPANTS) {
       participantData.classes[selectedValue].push(userId);
+      logMsg = `[신청] ${username} -> [${selectedValue}] 클래스`;
       participantData.applyHistory.push(`\`[${time}]\` **${username}** ➡️ **[${selectedValue}]** 클래스 신청`);
     } else {
       participantData.waitingList.push({ id: userId, name: username, class: selectedValue });
+      logMsg = `[대기] ${username} -> [${selectedValue}] 대기자 등록`;
       participantData.applyHistory.push(`\`[${time}]\` **${username}** ⏳ **[${selectedValue}]** 대기자 등록`);
     }
   }
+
+  // 📝 node_war_logs.txt 텍스트 파일에 즉시 저장은
+  saveLogToFile(logMsg);
 }
 
 client.on('ready', () => {
   console.log(`✅ ${client.user.tag} 봇이 성공적으로 실행되었습니다!`);
+
+  // -------------------------------------------------------------
+  // ⏰ 3. 매주 지정된 요일 오후 11시(23:00) 자동 삭제/초기화
+  // -------------------------------------------------------------
+  // '0 23 * * 0' -> 매주 일요일 오후 11시 00분
+  // (요일 번호: 0=일요일, 1=월요일, 2=화요일, 3=수요일, 4=목요일, 5=금요일, 6=토요일)
+  cron.schedule('0 23 * * 0', () => {
+    resetData();
+  }, {
+    timezone: "Asia/Seoul" // 한국 시간 기준
+  });
 });
 
 // 메시지 수신 및 명령어 권한 검사
@@ -320,7 +369,6 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   if (message.content === '!거점와써') {
-    // 🔒 권한 검사 (디스코드 서버 관리자 OR 지정된 허용 유저 ID 목록에 포함된 경우)
     const isAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator);
     const isAllowedUser = ALLOWED_USER_IDS.includes(message.author.id);
 
@@ -333,7 +381,6 @@ client.on('messageCreate', async (message) => {
       return;
     }
 
-    // 권한 확인 통과시 메시지 삭제 후 현황판 출력
     message.delete().catch(() => {});
 
     await message.channel.send({
@@ -351,7 +398,6 @@ client.on('interactionCreate', async (interaction) => {
     const username = interaction.user.displayName || interaction.user.username;
     const time = getTimeString();
 
-    // 1. 버튼 동작
     if (interaction.isButton()) {
       if (interaction.customId === 'btn_apply') {
         const status = getUserAppliedStatus(userId);
@@ -396,11 +442,13 @@ client.on('interactionCreate', async (interaction) => {
 
         if (isCanceled) {
           participantData.cancelHistory.push(`\`[${time}]\` **${username}** ❌ 거점 신청 전체 취소`);
+          saveLogToFile(`[취소] ${username} -> 신청 취소`);
 
           if (getTotalClassCount() < MAX_PARTICIPANTS && participantData.waitingList.length > 0) {
             const nextUser = participantData.waitingList.shift();
             participantData.classes[nextUser.class].push(nextUser.id);
             participantData.applyHistory.push(`\`[${time}]\` **${nextUser.name}** 🎉 대기 ➡️ **[${nextUser.class}]** 승급`);
+            saveLogToFile(`[승급] ${nextUser.name} -> 대기에서 [${nextUser.class}] 승급`);
           }
 
           await interaction.update({
@@ -418,9 +466,7 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
     } 
-    // 2. 셀렉트 메뉴 동작
     else if (interaction.isStringSelectMenu()) {
-      // 일반 거점 신청 - 카테고리 선택
       if (interaction.customId === 'select_category') {
         const selectedValue = interaction.values[0];
         await interaction.update({
@@ -428,7 +474,6 @@ client.on('interactionCreate', async (interaction) => {
           components: generateDetailSelect(selectedValue, false),
         });
       } 
-      // 일반 거점 신청 - 상세 클래스 선택
       else if (interaction.customId === 'select_detail_class') {
         const selectedValue = interaction.values[0];
         registerUserApplication(userId, username, selectedValue, time);
@@ -438,11 +483,9 @@ client.on('interactionCreate', async (interaction) => {
           components: generateMainButtons(),
         });
       }
-      // [즐겨찾기 루트 메뉴] 선택 / 추가 / 삭제
       else if (interaction.customId === 'select_fav_root') {
         const selectedValue = interaction.values[0];
 
-        // ⭐ 즐겨찾기 선택 (신청 반영)
         if (selectedValue === 'fav_action_apply') {
           const status = getUserAppliedStatus(userId);
           if (status.hasAny) {
@@ -460,14 +503,12 @@ client.on('interactionCreate', async (interaction) => {
             components: generateMainButtons(),
           });
         } 
-        // ➕ 즐겨찾기 추가/변경 선택
         else if (selectedValue === 'fav_action_add') {
           await interaction.update({
             embeds: [generateStatusEmbed(), generateHistoryEmbed()],
             components: generateFavoriteCategorySelect(),
           });
         }
-        // 🗑️ 즐겨찾기 삭제
         else if (selectedValue === 'fav_action_delete') {
           if (!participantData.userFavorites[userId]) {
             return await interaction.reply({ content: '❌ 삭제할 즐겨찾기 내역이 없습니다.', ephemeral: true });
@@ -481,7 +522,6 @@ client.on('interactionCreate', async (interaction) => {
           });
         }
       }
-      // [즐겨찾기 추가/변경 카테고리 메뉴] 선택
       else if (interaction.customId === 'select_fav_category') {
         const selectedValue = interaction.values[0];
 
@@ -503,7 +543,6 @@ client.on('interactionCreate', async (interaction) => {
           });
         }
       }
-      // 즐겨찾기 세부 항목 저장
       else if (interaction.customId === 'select_save_favorite') {
         const selectedValue = interaction.values[0];
         participantData.userFavorites[userId] = selectedValue;
