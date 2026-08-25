@@ -1,10 +1,13 @@
 {
-  "name": "discord-bot",
+  "name": "wasseo-bot",
   "version": "1.0.0",
+  "description": "",
   "main": "index.js",
-  "dependencies": "node-cron": "^3.0.3" ,
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "node-cron": "^3.0.3",
+    "discord.js": "^14.14.1"
   }
 }
