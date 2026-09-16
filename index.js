@@ -23,6 +23,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers, // 👈 서버 멤버 정보(닉네임) 조회를 위해 추가된 인텐트
   ],
 });
 
@@ -55,7 +56,7 @@ const participantData = {
   waitingList: [],
   applyHistory: [],  
   cancelHistory: [], 
-  userFavorites: {}   
+  userFavorites: {}    
 };
 
 const SINGLE_SLOT_SUBS = ['화염탑 1', '화염탑 2', '대포 1', '대포 2'];
@@ -341,7 +342,8 @@ client.on('interactionCreate', async (interaction) => {
 
   try {
     const userId = interaction.user.id;
-    const username = interaction.user.displayName || interaction.user.username;
+    // 💡 디스코드 서버 프로필 닉네임(서버 닉네임) 우선 적용, 없으면 기본 글로벌 닉네임 사용
+    const username = interaction.member?.displayName || interaction.user.displayName || interaction.user.username;
     const time = getTimeString();
 
     // 1. 버튼 동작
