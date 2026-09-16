@@ -7,6 +7,7 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 
 require('dotenv').config();
+const cron = require('node-cron');
 const { 
   Client, 
   GatewayIntentBits, 
@@ -23,7 +24,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers, // 👈 서버 멤버 정보(닉네임) 조회를 위해 추가된 인텐트
+    GatewayIntentBits.GuildMembers, // 서버 닉네임 조회를 위한 인텐트
   ],
 });
 
@@ -31,6 +32,9 @@ const MAX_PARTICIPANTS = 25;
 
 // 🔒 관리자가 아니더라도 명령어를 사용할 수 있는 특정 유저 ID 목록
 const ALLOWED_USER_IDS = ['313250401883258882']; 
+
+// 📢 자동으로 공지가 올라갈 디스코드 채널 ID를 여기에 입력하세요 (예: '123456789012345678')
+const TARGET_CHANNEL_ID = '313250401883258882';
 
 const participantData = {
   classes: {
@@ -310,6 +314,28 @@ function registerUserApplication(userId, username, selectedValue, time) {
 
 client.on('ready', () => {
   console.log(`✅ ${client.user.tag} 봇이 성공적으로 실행되었습니다!`);
+
+  // ⏰ 매주 월, 수, 금, 일 오후 10시 10분 자동 공지 스케줄 설정 (0:일, 1:월, 3:수, 5:금)
+  cron.schedule('10 22 * * 0,1,3,5', async () => {
+    try {
+      const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
+      if (!channel) {
+        console.error('❌ 자동 공지 채널을 찾을 수 없습니다. 채널 ID를 확인해주세요.');
+        return;
+      }
+
+      await channel.send({
+        content: '📢 **[자동 공지]** 거점전 신청 시간이 되었습니다!',
+        embeds: [generateStatusEmbed(), generateHistoryEmbed()],
+        components: generateMainButtons(),
+      });
+      console.log('✅ 거점전 자동 공지가 성공적으로 전송되었습니다.');
+    } catch (error) {
+      console.error('❌ 자동 공지 전송 중 오류 발생:', error);
+    }
+  }, {
+    timezone: "Asia/Seoul"
+  });
 });
 
 client.on('messageCreate', async (message) => {
@@ -342,7 +368,7 @@ client.on('interactionCreate', async (interaction) => {
 
   try {
     const userId = interaction.user.id;
-    // 💡 디스코드 서버 프로필 닉네임(서버 닉네임) 우선 적용, 없으면 기본 글로벌 닉네임 사용
+    // 서버 프로필 닉네임 우선 적용
     const username = interaction.member?.displayName || interaction.user.displayName || interaction.user.username;
     const time = getTimeString();
 
@@ -518,7 +544,7 @@ process.on('uncaughtException', (err) => {
 
 client.login(process.env.DISCORD_TOKEN);
 
-// Render 24시간 수면 방지 (별도 패키지 설치 필요 없음)
+// Render 24시간 수면 방지
 const https = require('https');
 
 setInterval(() => {
@@ -527,9 +553,8 @@ setInterval(() => {
   }).on('error', (err) => {
     console.error('Ping 에러:', err.message);
   });
-}, 14 * 60 * 1000); // 14분마다 실행
+}, 14 * 60 * 1000); 
 
-// 예상치 못한 에러 발생 시 봇이 꺼지지 않도록 예외 처리
 process.on('unhandledRejection', (error) => {
   console.error('Unhandled promise rejection:', error);
 });
